@@ -4,10 +4,16 @@ import random
 import xml.etree.ElementTree as Et
 from collections import defaultdict
 from dataclasses import dataclass
-import config as CNF
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(CURRENT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.append(PARENT_DIR)
+
+import config.config as CNF
 class Config:
     CHUNK_SIZE = 3600  # Chunk size in seconds
 
@@ -118,6 +124,9 @@ class Generator:
                 v_elem.set('power', f"{vehicle.power:.2f}")
                 v_elem.set('frequency', f"{vehicle.frequency:.2f}")
                 v_elem.set('weather', f"{vehicle.weather}")
+                
+                # ADD THIS LINE: Save base_lambda to the XML output
+                v_elem.set('base_lambda', f"{vehicle.base_lambda:.4f}")
 
         Et.indent(root, space="    ", level=0)
         tree = Et.ElementTree(root)
