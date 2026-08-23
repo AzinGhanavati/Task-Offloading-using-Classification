@@ -1,0 +1,12 @@
+*.mp4
+*.zip
+*.pkl
+*.xml
+*.csv
+share
+Scripts
+Lib
+*.xlsx
+*.png
+*.json13:57
+data/raw/simulation.out.xml
