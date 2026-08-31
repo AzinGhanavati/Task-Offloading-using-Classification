@@ -23,7 +23,7 @@ class FogNode(ComputeNode):
     ) -> None:
         super().__init__(
             node_id=node_id,
-            kind=NodeKind.MOBILE_FOG if mobile else NodeKind.FIXED_FOG,
+            kind=NodeKind.MOBILE_FOG ,
             hardware=hardware,
             x=x,
             y=y,
