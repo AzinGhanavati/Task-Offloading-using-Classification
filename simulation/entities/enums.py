@@ -4,7 +4,6 @@ from enum import Enum, IntEnum
 class NodeKind(str, Enum):
     VEHICLE = "vehicle"
     MOBILE_FOG = "mobile_fog"
-    FIXED_FOG = "fixed_fog"
     EDGE = "edge"
     CLOUD = "cloud"
 
