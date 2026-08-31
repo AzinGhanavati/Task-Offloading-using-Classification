@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
-    from simulation.entities.compute_node import ProcessingCore
+    from simulation.entities.processing_core import ProcessingCore
     from simulation.entities.task import Task
 
 class LeastLoadedCoreMapper:
