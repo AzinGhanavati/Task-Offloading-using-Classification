@@ -9,8 +9,8 @@ from config.simulation_config import SimulationConfig, default_simulation_config
 from models.local_decision.base import AdmissionContext, LocalAdmissionPolicy
 from models.local_decision.threshold_admission import ThresholdAdmissionPolicy
 from models.regression.predictor import PredictionProvider
-from models.rl.policy import OffloadingPolicy
-from models.rl.random_policy import RandomOffloadingPolicy
+from models.DRL.policy import OffloadingPolicy
+from models.DRL.random_policy import RandomOffloadingPolicy
 from simulation.entities.cloud_node import CloudNode
 from simulation.entities.compute_node import ComputeNode
 from simulation.entities.edge_server import EdgeServer
