@@ -25,27 +25,25 @@ def adaptive_reward(
     deadline_missed: bool,
     config: AdaptiveRewardConfig = AdaptiveRewardConfig(),
 ) -> tuple[float, float, float, float]:
-    """Return reward, alpha, beta, predicted slack.
-
-    Small/negative predicted slack raises alpha; large slack raises beta.  The
-    actual outcome remains the optimized signal, avoiding reward leakage from
-    the predictor.
-    """
-
+    """Return reward, alpha, beta, predicted slack."""
+    
     predicted_slack_s = (
         remaining_deadline_at_decision_s - predicted_completion_time_s
     )
     temperature = max(config.slack_temperature_s, 1.0e-9)
     z = max(-60.0, min(60.0, predicted_slack_s / temperature))
     urgency = 1.0 / (1.0 + math.exp(z))
+    
     alpha = config.alpha_min + urgency * (
         config.alpha_max - config.alpha_min
     )
     beta = config.beta_max - urgency * (config.beta_max - config.beta_min)
+    
     delay_term = actual_completion_time_s / max(config.delay_scale_s, 1.0e-9)
     energy_term = actual_energy_j / max(config.energy_scale_j, 1.0e-9)
     reward = -(alpha * delay_term + beta * energy_term)
+    
     if deadline_missed:
         reward -= config.deadline_miss_penalty
+        
     return reward, alpha, beta, predicted_slack_s
-

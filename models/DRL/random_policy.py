@@ -16,4 +16,3 @@ class RandomOffloadingPolicy:
         if not valid:
             raise RuntimeError("no valid action is available")
         return self.rng.choice(valid)
-

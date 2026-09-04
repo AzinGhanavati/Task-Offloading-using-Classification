@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, Sequence, TYPE_CHECKING
+from typing import Protocol, TYPE_CHECKING
 
 from simulation.entities.enums import OffloadAction
 
@@ -11,4 +11,3 @@ if TYPE_CHECKING:
 class OffloadingPolicy(Protocol):
     def select_action(self, context: "DecisionContext") -> OffloadAction:
         ...
-
