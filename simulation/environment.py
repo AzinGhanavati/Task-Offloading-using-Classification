@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import heapq
 import itertools
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol, Sequence
 
+from config.hyperparameters import Hyperparameters
 from config.simulation_config import SimulationConfig, default_simulation_config
 from models.local_decision.base import AdmissionContext, LocalAdmissionPolicy
 from models.local_decision.threshold_admission import ThresholdAdmissionPolicy
@@ -21,7 +23,9 @@ from simulation.entities.task import Task
 from simulation.entities.vehicle import Vehicle
 from simulation.network.energy_model import eptask_compute_energy_j
 from simulation.network.radio_model import RadioModel
+from simulation.network.urban_grid import UrbanGrid
 from simulation.network.wired_network import FullMeshWiredNetwork
+
 
 @dataclass(frozen=True, slots=True)
 class VehicleSnapshot:
@@ -35,6 +39,7 @@ class VehicleSnapshot:
     generation_rate: float
     qoe: float = 1.0
 
+
 class SimulationObserver(Protocol):
     def on_decision(
         self,
@@ -47,6 +52,7 @@ class SimulationObserver(Protocol):
     def on_final(self, task: Task) -> None:
         ...
 
+
 class _EventType(str, Enum):
     MOBILITY = "mobility"
     CORE_COMPLETE = "core_complete"
@@ -54,6 +60,7 @@ class _EventType(str, Enum):
     COMPUTE_ARRIVAL = "compute_arrival"
     CLOUD_GATEWAY_ARRIVAL = "cloud_gateway_arrival"
     FAILURE = "failure"
+
 
 _EVENT_PRIORITY = {
     _EventType.MOBILITY: 0,
@@ -64,6 +71,7 @@ _EVENT_PRIORITY = {
     _EventType.FAILURE: 5,
 }
 
+
 @dataclass(order=True, slots=True)
 class _Event:
     time: float
@@ -72,13 +80,26 @@ class _Event:
     event_type: _EventType = field(compare=False)
     payload: Any = field(compare=False)
 
+
 @dataclass(frozen=True, slots=True)
 class _TaskArrival:
     task: Task
     bypass_admission: bool
     forced_action: OffloadAction | None
 
+
 class SimulationEnvironment:
+    """Discrete-event vehicular edge computing simulator.
+
+    Two driving modes are supported:
+
+    * **Batch** (offline data collection): schedule everything, then ``run()``
+      to completion.  The configured offloading policy makes each decision.
+    * **Decision-stepping** (DRL): ``reset_for_episode`` schedules the scenario
+      and stops at each offloading decision; ``apply_and_advance`` feeds the
+      agent's chosen action and resumes until the next decision.
+    """
+
     def __init__(
         self,
         *,
@@ -86,13 +107,17 @@ class SimulationEnvironment:
         fog_nodes: Sequence[FogNode],
         cloud: CloudNode,
         config: SimulationConfig | None = None,
+        hyperparameters: Hyperparameters | None = None,
         admission_policy: LocalAdmissionPolicy | None = None,
         offloading_policy: OffloadingPolicy | None = None,
         predictor: PredictionProvider | None = None,
+        urban_grid: UrbanGrid | None = None,
     ) -> None:
         self.config = config or default_simulation_config()
+        self.hyperparameters = hyperparameters or Hyperparameters()
         self.radio = RadioModel(self.config.radio, seed=self.config.random_seed)
         self.wired = FullMeshWiredNetwork(self.config.wired)
+        self.urban_grid = urban_grid
         self.sdn = SDNController(
             edge_servers=edge_servers,
             fog_nodes=fog_nodes,
@@ -100,6 +125,8 @@ class SimulationEnvironment:
             radio=self.radio,
             wired=self.wired,
             predictor=predictor,
+            urban_grid=urban_grid,
+            normalization=self.hyperparameters.normalization,
         )
         self.admission_policy = admission_policy or ThresholdAdmissionPolicy()
         self.offloading_policy = offloading_policy or RandomOffloadingPolicy(
@@ -113,10 +140,19 @@ class SimulationEnvironment:
         self._events: list[_Event] = []
         self._sequence = itertools.count()
 
+        # Decision-stepping state (used by the DRL gym wrapper).
+        self._pause_at_decision = False
+        self._paused = False
+        self._current_task: Task | None = None
+        self._current_context: DecisionContext | None = None
+
     @property
     def all_nodes(self) -> dict[str, ComputeNode]:
         return {**self.sdn.infrastructure_nodes, **self.vehicles}
 
+    # ------------------------------------------------------------------
+    # Registration / scheduling (batch mode)
+    # ------------------------------------------------------------------
     def add_observer(self, observer: SimulationObserver) -> None:
         self.observers.append(observer)
 
@@ -148,22 +184,34 @@ class SimulationEnvironment:
             _TaskArrival(task, bypass_admission, action),
         )
 
+    # ------------------------------------------------------------------
+    # Event loop
+    # ------------------------------------------------------------------
     def run(self, until: float | None = None) -> None:
-        while self._events:
+        while self._events and not self._paused:
             timestamp = self._events[0].time
             if until is not None and timestamp > until:
                 break
             self.now = timestamp
-            
-            while self._events and self._same_time(self._events[0].time, timestamp):
-                batch: list[_Event] = []
-                while self._events and self._same_time(
-                    self._events[0].time, timestamp
-                ):
-                    batch.append(heapq.heappop(self._events))
-                batch.sort(key=lambda item: (item.priority, item.sequence))
-                for event in batch:
-                    self._handle(event)
+            self._process_timestamp(timestamp)
+            if self._paused:
+                break
+
+    def _process_timestamp(self, timestamp: float) -> None:
+        batch: list[_Event] = []
+        while self._events and self._same_time(self._events[0].time, timestamp):
+            batch.append(heapq.heappop(self._events))
+        batch.sort(key=lambda item: (item.priority, item.sequence))
+        for index, event in enumerate(batch):
+            self._handle(event)
+            if self._paused:
+                # The pausing event (this one) is consumed: the decision is now
+                # pending and will be applied by apply_and_advance.  Requeue only
+                # the later events of this timestamp so nothing is lost.
+                for remaining in batch[index + 1:]:
+                    heapq.heappush(self._events, remaining)
+                break
+        if not self._paused:
             self._start_all_idle_cores(timestamp)
 
     def _handle(self, event: _Event) -> None:
@@ -177,6 +225,99 @@ class SimulationEnvironment:
         }
         handlers[event.event_type](event.payload)
 
+    # ------------------------------------------------------------------
+    # Decision-stepping API (DRL)
+    # ------------------------------------------------------------------
+    @property
+    def current_task(self) -> Task | None:
+        return self._current_task
+
+    @property
+    def current_context(self) -> DecisionContext | None:
+        return self._current_context
+
+    def reset_for_episode(self, scenario) -> DecisionContext:
+        """Reset nodes and schedule the scenario, then advance to the first
+        offloading decision.  Returns the first DecisionContext (or raises if
+        the scenario has no decisions)."""
+        self._events.clear()
+        self._sequence = itertools.count()
+        self.completed_tasks.clear()
+        self.failed_tasks.clear()
+        self.vehicles.clear()
+        self.sdn.fog_nodes.clear()
+        self.wired.reset()
+        for node in [*self.sdn.edge_servers.values(), self.sdn.cloud]:
+            node.reset()
+
+        self._pause_at_decision = True
+        self._paused = False
+        self._current_task = None
+        self._current_context = None
+        self.now = 0.0
+
+        for time, snapshots in scenario.vehicle_snapshots():
+            self.schedule_vehicle_snapshot(time, snapshots)
+        for task in scenario.make_tasks():
+            self.schedule_task(task, bypass_admission=True)
+
+        self.run()
+        if self._current_context is None:
+            raise RuntimeError("scenario produced no offloading decisions")
+        return self._current_context
+
+    def apply_and_advance(
+        self, action: OffloadAction | int
+    ) -> tuple[list[Task], list[Task], DecisionContext | None, bool]:
+        """Apply ``action`` to the pending decision, then resume until the next
+        decision or the end of the scenario.
+
+        Returns ``(completed, failed, next_context, done)``.
+        """
+        task = self._current_task
+        context = self._current_context
+        if task is None or context is None:
+            raise RuntimeError("no pending decision to advance")
+        self._current_task = None
+        self._current_context = None
+        self._paused = False
+
+        action = OffloadAction(action)
+        self._finish_task_arrival(task, context, action)
+        # Locally-executed tasks are enqueued immediately, so start idle cores
+        # right away before the event loop resumes.
+        self._start_all_idle_cores(self.now)
+
+        completed_before = len(self.completed_tasks)
+        failed_before = len(self.failed_tasks)
+        self.run()
+
+        completed = self.completed_tasks[completed_before:]
+        failed = self.failed_tasks[failed_before:]
+        if self._paused:
+            return completed, failed, self._current_context, False
+        return completed, failed, None, True
+
+    def reset(self) -> None:
+        """Clear all state for a fresh batch run (offline data collection)."""
+        self._events.clear()
+        self._sequence = itertools.count()
+        self.completed_tasks.clear()
+        self.failed_tasks.clear()
+        self.vehicles.clear()
+        self.sdn.fog_nodes.clear()
+        self.wired.reset()
+        for node in self.all_nodes.values():
+            node.reset()
+        self._pause_at_decision = False
+        self._paused = False
+        self._current_task = None
+        self._current_context = None
+        self.now = 0.0
+
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
     def _handle_mobility(self, snapshots: Sequence[VehicleSnapshot]) -> None:
         for node in self.vehicles.values():
             node.active = False
@@ -242,43 +383,67 @@ class SimulationEnvironment:
         task.decision_time = self.now
         task.status = TaskStatus.DECIDED
         context = self.sdn.prepare_decision(task=task, creator=creator, now=self.now)
-        
+
+        if self._pause_at_decision and self._current_task is None:
+            self._current_task = task
+            self._current_context = context
+            self._paused = True
+            return
+
+        action = self._resolve_action(payload, context, creator)
+        if action is not None:
+            self._finish_task_arrival(task, context, action)
+
+    def _resolve_action(
+        self,
+        payload: _TaskArrival,
+        context: DecisionContext,
+        creator: ComputeNode,
+    ) -> OffloadAction | None:
+        task = payload.task
         if payload.forced_action is not None:
             action = payload.forced_action
             if not context.catalog[int(action)].valid:
                 self._fail(task, f"forced_action_{int(action)}_invalid")
-                return
-        elif payload.bypass_admission:
-            action = self.sdn.select_action(
+                return None
+            return action
+        if payload.bypass_admission:
+            return self.sdn.select_action(
                 context=context, policy=self.offloading_policy
             )
-        else:
-            admission = self._admission_context(task, creator, context)
-            local_decision = self.admission_policy.decide(admission)
-            action = (
-                OffloadAction.LOCAL
-                if local_decision is AdmissionDecision.LOCAL
-                else self.sdn.select_action(
-                    context=context, policy=self.offloading_policy
-                )
-            )
-            
+        admission = self._admission_context(task, creator, context)
+        local_decision = self.admission_policy.decide(admission)
+        if local_decision is AdmissionDecision.LOCAL:
+            return OffloadAction.LOCAL
+        return self.sdn.select_action(context=context, policy=self.offloading_policy)
+
+    def _finish_task_arrival(
+        self, task: Task, context: DecisionContext, action: OffloadAction
+    ) -> None:
         candidate = context.catalog[int(action)]
         task.chosen_action = action
         task.target_node_id = candidate.target_node_id
         task.gateway_edge_id = candidate.gateway_edge_id
-        
+
         for observer in self.observers:
             observer.on_decision(task, context, action)
-            
+
         if action is OffloadAction.LOCAL:
             self._handle_compute_arrival(task)
             return
-            
+
+        # Sample the per-cell path-loss exponent for the actual transmission.
+        exponent = None
+        if self.sdn.urban_grid is not None:
+            creator = self.vehicles.get(task.creator_id)
+            if creator is not None:
+                exponent = self.sdn.urban_grid.sample_exponent(creator.x, creator.y)
+
         transmission = self.radio.transmit(
             data_size_bits=task.data_size_bits,
             distance_m=candidate.distance_m,
             coverage_radius_m=candidate.coverage_radius_m,
+            path_loss_exponent=exponent,
         )
         task.status = TaskStatus.TRANSMITTING
         task.wireless_time_s += transmission.duration_s
@@ -287,12 +452,10 @@ class SimulationEnvironment:
         task.packet_loss_rate = transmission.estimate.packet_loss_rate
         task.achieved_wireless_rate_bps = transmission.estimate.rate_bps
         arrives_at = self.now + transmission.duration_s
-        
+
         if not transmission.success:
             self._schedule(
-                arrives_at,
-                _EventType.FAILURE,
-                (task, "wireless_transmission_failed"),
+                arrives_at, _EventType.FAILURE, (task, "wireless_transmission_failed")
             )
         elif action is OffloadAction.CLOUD:
             self._schedule(arrives_at, _EventType.CLOUD_GATEWAY_ARRIVAL, task)
@@ -355,6 +518,9 @@ class SimulationEnvironment:
                     (node.node_id, start.core_id),
                 )
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
     def _admission_context(
         self,
         task: Task,
@@ -367,7 +533,9 @@ class SimulationEnvironment:
             for features in decision.raw_state.action_features[1:]
             if features.valid
         ]
-        best = min(remotes, key=lambda item: item.estimated_total_delay_s, default=local)
+        best = min(
+            remotes, key=lambda item: item.estimated_total_delay_s, default=local
+        )
         local_energy = eptask_compute_energy_j(
             task.required_cycles,
             creator.frequency_hz,

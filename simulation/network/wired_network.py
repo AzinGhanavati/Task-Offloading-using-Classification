@@ -26,6 +26,10 @@ class FullMeshWiredNetwork:
         snr_linear = 10.0 ** (self.config.snr_db / 10.0)
         return self.config.average_bandwidth_hz * math.log2(1.0 + snr_linear)
 
+    def reset(self) -> None:
+        """Clear per-link busy schedules (used between DRL episodes)."""
+        self._available_at.clear()
+
     def estimate_duration_s(self, data_size_bits: float) -> float:
         return data_size_bits / self.rate_bps + self.config.propagation_delay_s
 

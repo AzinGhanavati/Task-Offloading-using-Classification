@@ -40,6 +40,11 @@ class EDFQueue:
         self._total_service_time_s -= item.service_time_s
         return item
 
+    def clear(self) -> None:
+        """Drop all queued tasks and reset the accounting counter."""
+        self._heap.clear()
+        self._total_service_time_s = 0.0
+
     def peek(self) -> QueuedTask | None:
         return None if not self._heap else self._heap[0]
 

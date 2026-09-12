@@ -47,20 +47,22 @@ class RadioModel:
         distance_m: float,
         coverage_radius_m: float,
         interference_w: float = 0.0,
+        path_loss_exponent: float | None = None,
     ) -> WirelessLinkEstimate:
         if coverage_radius_m <= 0:
             raise ValueError("coverage radius must be positive")
-            
+
         valid = distance_m <= coverage_radius_m
         tx_w = self.distance_scaled_transmit_power_w(distance_m, coverage_radius_m)
         tx_dbm = watt_to_dbm(tx_w)
-        
+
         path_loss_db = rato_path_loss_db(
             distance_m,
             self.config.carrier_frequency_hz,
             environment=self.config.environment,
             noisy=self.config.noisy_environment,
             rain_attenuation_db=self.config.rain_attenuation_db,
+            exponent_override=path_loss_exponent,
         )
         
         received_dbm = (
@@ -116,11 +118,13 @@ class RadioModel:
         distance_m: float,
         coverage_radius_m: float,
         interference_w: float = 0.0,
+        path_loss_exponent: float | None = None,
     ) -> WirelessTransmission:
         estimate = self.estimate(
             distance_m=distance_m,
             coverage_radius_m=coverage_radius_m,
             interference_w=interference_w,
+            path_loss_exponent=path_loss_exponent,
         )
         
         if not estimate.valid or estimate.rate_bps <= 0.0:
