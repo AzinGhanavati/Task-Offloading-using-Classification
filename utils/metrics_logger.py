@@ -128,3 +128,123 @@ class MetricsLogger:
 
     def clear(self) -> None:
         self._records.clear()
+
+
+import csv
+import math
+from simulation.entities.enums import OffloadAction, TaskStatus
+
+class EvaluationMetricsLogger:
+    def __init__(self, step_interval_s: int = 1):
+        self.step_interval = step_interval_s
+        self.task_logs = []
+        self.step_logs = []
+        
+        # Cumulative tracking
+        self.current_step = 0
+        self.total_tasks = 0
+        self.total_deadline_misses = 0
+        self.total_no_resource = 0
+        
+        self.loc_local = 0
+        self.loc_fog = 0
+        self.loc_cloud = 0
+        
+        self.sum_delay = 0.0
+        self.sum_energy = 0.0
+
+    def on_decision(self, task, context, action) -> None:
+        pass  # Data is captured when the task finishes
+
+    def on_final(self, task) -> None:
+        task_time = task.completed_at
+        step = math.floor(task_time / self.step_interval) * self.step_interval
+        
+        # Flush step metrics if simulation time crossed a boundary
+        while self.current_step < step:
+            self._record_step(self.current_step)
+            self.current_step += self.step_interval
+
+        # 1. Calculate Task Metrics
+        delay = task.completed_at - task.arrival_time
+        total_energy = (
+            getattr(task, "vehicle_compute_energy_j", 0.0) +
+            getattr(task, "infrastructure_compute_energy_j", 0.0) +
+            getattr(task, "vehicle_tx_energy_j", 0.0) +
+            getattr(task, "wired_energy_j", 0.0)
+        )
+        slack = task.completed_at - task.absolute_deadline
+        
+        is_failed = task.status == TaskStatus.FAILED
+        missed_deadline = is_failed or (task.completed_at > task.absolute_deadline)
+        
+        if is_failed and getattr(task, "failure_reason", "") in ["queue_rejected", "target_missing"]:
+            self.total_no_resource += 1
+
+        location = "UNKNOWN"
+        action = getattr(task, "chosen_action", None)
+        if action == OffloadAction.LOCAL:
+            location = "LOCAL"
+            self.loc_local += 1
+        elif action == OffloadAction.CLOUD:
+            location = "CLOUD"
+            self.loc_cloud += 1
+        elif action in (OffloadAction.CANDIDATE_1, OffloadAction.CANDIDATE_2, OffloadAction.CANDIDATE_3):
+            location = "FOG/EDGE"
+            self.loc_fog += 1
+
+        # 2. Record Task-Level Data
+        self.task_logs.append({
+            "Task_ID": task.task_id,
+            "Arrival_Time": task.arrival_time,
+            "Completed_At": task.completed_at,
+            "Location": location,
+            "Delay_s": delay,
+            "Total_Energy_J": total_energy,
+            "Deadline_Missed": missed_deadline,
+            "Finish_Minus_Deadline": slack,
+            "Status": task.status.name
+        })
+
+        # 3. Update Cumulative Counters
+        self.total_tasks += 1
+        if missed_deadline:
+            self.total_deadline_misses += 1
+        self.sum_delay += delay
+        self.sum_energy += total_energy
+
+    def _record_step(self, step_time: int) -> None:
+        avg_delay = self.sum_delay / self.total_tasks if self.total_tasks > 0 else 0.0
+        avg_energy = self.sum_energy / self.total_tasks if self.total_tasks > 0 else 0.0
+        miss_ratio = self.total_deadline_misses / self.total_tasks if self.total_tasks > 0 else 0.0
+        no_res_ratio = self.total_no_resource / self.total_tasks if self.total_tasks > 0 else 0.0
+        
+        # Matches your exact image columns + averages
+        self.step_logs.append({
+            "timeStep": step_time,
+            "Total deadline misses": self.total_deadline_misses,
+            "Total cloud tasks": self.loc_cloud,
+            "Total local execution tasks": self.loc_local,
+            "Total fog execution tasks": self.loc_fog,
+            "Total completed tasks": self.total_tasks,
+            "Deadline miss ratio": f"{miss_ratio:.3%}",
+            "No Resource found by deadline miss ratio": f"{no_res_ratio:.3%}",
+            "Average Delay (s)": avg_delay,
+            "Average Energy (J)": avg_energy
+        })
+
+    def write_csvs(self, task_csv_path: str, step_csv_path: str) -> None:
+        self._record_step(self.current_step)  # Flush final step
+        if self.task_logs:
+            with open(task_csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=self.task_logs[0].keys())
+                writer.writeheader()
+                writer.writerows(self.task_logs)
+                
+        if self.step_logs:
+            with open(step_csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=self.step_logs[0].keys())
+                writer.writeheader()
+                writer.writerows(self.step_logs)
+
+    
