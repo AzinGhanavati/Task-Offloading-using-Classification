@@ -501,6 +501,15 @@ class SimulationEnvironment:
             task.infrastructure_compute_energy_j += compute_energy_j
         task.status = TaskStatus.COMPLETED
         task.completed_at = self.now
+
+        if hasattr(self.admission_policy, "update"):
+            delay = task.completed_at - task.arrival_time
+            reward = -delay 
+            try:
+                self.admission_policy.update(task.task_id, reward)
+            except KeyError:
+                pass
+
         self.completed_tasks.append(task)
         for observer in self.observers:
             observer.on_final(task)
@@ -569,6 +578,14 @@ class SimulationEnvironment:
         task.status = TaskStatus.FAILED
         task.failure_reason = reason
         task.completed_at = self.now
+
+        if hasattr(self.admission_policy, "update"):
+            penalty = -10.0 #unchecked
+            try:
+                self.admission_policy.update(task.task_id, penalty)
+            except KeyError:
+                pass
+
         self.failed_tasks.append(task)
         for observer in self.observers:
             observer.on_final(task)
