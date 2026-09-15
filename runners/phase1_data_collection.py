@@ -52,6 +52,7 @@ def run(
     metrics = MetricsLogger()
     eval_metrics = EvaluationMetricsLogger(step_interval_s=5)
 
+    print("[phase1] Loading scenario and scheduling events. Please wait...")
     # Attach all observers to the environment
     env.add_observer(recorder)
     env.add_observer(metrics)
@@ -63,6 +64,9 @@ def run(
     for task in scenario.make_tasks():
         env.schedule_task(task, bypass_admission=True)
         
+    print(f"[phase1] Total events scheduled: {len(env._events)}")
+    print("[phase1] Starting simulation event loop...")
+    
     env.run()
 
     # Save the dataset required for Phase 2

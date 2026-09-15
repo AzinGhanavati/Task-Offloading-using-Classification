@@ -188,8 +188,16 @@ class SimulationEnvironment:
     # Event loop
     # ------------------------------------------------------------------
     def run(self, until: float | None = None) -> None:
+        last_log_time = 0.0
+        
         while self._events and not self._paused:
             timestamp = self._events[0].time
+            
+            # Log progress every 100 simulated seconds
+            if timestamp - last_log_time >= 100.0:
+                print(f"[Simulation Progress] Current Time: {timestamp:.1f}s | Pending Events: {len(self._events)}")
+                last_log_time = timestamp
+                
             if until is not None and timestamp > until:
                 break
             self.now = timestamp
