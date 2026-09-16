@@ -10,3 +10,4 @@ Lib
 *.png
 *.json13:57
 data/raw/simulation.out.xml
+*.pyc
