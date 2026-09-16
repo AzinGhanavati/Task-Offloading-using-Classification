@@ -1,0 +1,15 @@
+Loading vehicle coordinates from ../data/raw/simulation.out.xml...
+Total unique traffic points extracted: 347021
+Testing coverage with Edge Server Radius = 300.0 meters
+
+Number of Servers (K)     | Coverage Percentage
+**************************************************
+3                         | 48.79%
+5                         | 72.02%
+10                        | 95.96%
+15                        | 99.64%
+20                        | 100.00%
+25                        | 99.98%
+
+Recommendation:
+Choose the lowest K that gives you at least 85% to 90% coverage.
