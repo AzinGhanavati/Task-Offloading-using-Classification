@@ -51,7 +51,7 @@ class SimulationConfig:
     random_seed: int
     vehicle: HardwareProfile
     mobile_fog: HardwareProfile
-    fixed_fog: HardwareProfile
+    # fixed_fog: HardwareProfile
     edge: HardwareProfile
     cloud: HardwareProfile
     radio: RadioConfig
@@ -83,28 +83,28 @@ def default_simulation_config() -> SimulationConfig:
             queue_capacity=None
         ),
         
-        # Fixed Fog: 16 cores, 3.0 GHz
-        fixed_fog=HardwareProfile(
-            core_count=16,
+        ## Fixed Fog: 16 cores, 3.0 GHz
+        # fixed_fog=HardwareProfile(
+        #     core_count=16,
+        #     core_frequency_hz=3.0e9,
+        #     energy_coefficient=1.0e-27,
+        #     energy_exponent=2.0,
+        #     queue_capacity=None
+        # ),
+        
+        # Edge Server: 32 cores, 3 GHz
+        edge=HardwareProfile(
+            core_count=32,
             core_frequency_hz=3.0e9,
             energy_coefficient=1.0e-27,
             energy_exponent=2.0,
             queue_capacity=None
         ),
         
-        # Edge Server: 32 cores, 4.5 GHz
-        edge=HardwareProfile(
-            core_count=32,
-            core_frequency_hz=4.5e9,
-            energy_coefficient=1.0e-27,
-            energy_exponent=2.0,
-            queue_capacity=None
-        ),
-        
-        # Cloud Server: 100 cores, 7.5 GHz
+        # Cloud Server: 64 cores, 5.0 GHz
         cloud=HardwareProfile(
-            core_count=100,
-            core_frequency_hz=7.5e9,
+            core_count=64,
+            core_frequency_hz=5.0e9,
             energy_coefficient=1.0e-27,
             energy_exponent=2.0,
             queue_capacity=None
