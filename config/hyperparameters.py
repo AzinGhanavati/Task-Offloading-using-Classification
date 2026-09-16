@@ -27,11 +27,11 @@ NUM_ACTIONS = 5
 # ============================================================================
 @dataclass(frozen=True, slots=True)
 class NormalizationConfig:
-    max_data_size_bits: float = 2.0e6        # data size ratio denominator
-    max_workload_cycles: float = 1.0e9       # workload ratio denominator
-    max_deadline_s: float = 30.0             # deadline ratio denominator
-    max_queue_time_s: float = 10.0           # queue/workload time denominator
-    max_distance_m: float = 1000.0           # distance denominator
+    max_data_size_bits: float = 1.7e6    # (1.5e6 + margin)
+    max_workload_cycles: float = 3.3e9   # (3.0e9 + margin)
+    max_deadline_s: float = 17.6         # (16.0 + margin)
+    max_queue_time_s: float = 16.0           # queue/workload time denominator
+    max_distance_m: float = 2700.0          # distance denominator d = sqrt(2130^2 + 1590^2)=2658 
     path_loss_min: float = 3.0               # urban cell coefficient range
     path_loss_max: float = 4.0
 
@@ -66,8 +66,8 @@ class NormalizationConfig:
 @dataclass(frozen=True, slots=True)
 class UrbanGridConfig:
     cell_size_m: float = 100.0
-    area_x_max: float = 2000.0               # metres, x extent of the map
-    area_y_max: float = 1500.0               # metres, y extent of the map
+    area_x_max: float = 2130.0              # metres, x extent of the map
+    area_y_max: float = 1590.0              # metres, y extent of the map
     path_loss_min: float = 3.0
     path_loss_max: float = 4.0
     shadowing_sigma: float = 0.10            # lognormal spread around cell mean
@@ -86,8 +86,8 @@ class UrbanGridConfig:
 @dataclass(frozen=True, slots=True)
 class PlacementConfig:
     strategy: str = "kmeans"                 # "kmeans" | "central"
-    num_edge_servers: int = 3
-    edge_coverage_radius_m: float = 1000.0   # wireless validity radius per edge
+    num_edge_servers: int = 10
+    edge_coverage_radius_m: float = 300.0   # wireless validity radius per edge
     random_state: int = 42
     max_iter: int = 100                      # K-Means iteration budget
     tol: float = 1e-4                        # K-Means convergence tolerance
@@ -109,10 +109,10 @@ class RegressionConfig:
     action_count: int = NUM_ACTIONS
     learning_rate: float = 1e-3
     weight_decay: float = 1e-5
-    epochs: int = 300
-    batch_size: int = 128
+    epochs: int = 50
+    batch_size: int = 512
     miss_loss_weight: float = 1.0            # weight on the BCE miss head
-    device: str = "cpu"
+    device: str = "gpu" if __import__("torch").cuda.is_available() else "cpu"
     checkpoint_dir: str = "data/saved_models"
 
     # Number of raw state features fed to the regression trunk (blocks 1-5).
