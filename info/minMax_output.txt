@@ -1,0 +1,6 @@
+Map Boundaries Analysis:
+Total vehicle records processed: 991762
+X-Axis: Min = 29.24, Max = 2128.64
+Y-Axis: Min = 30.38, Max = 1586.68
+Map Width: 2099.40 meters
+Map Height: 1556.30 meters

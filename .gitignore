@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 *.mp4
 *.zip
 *.pkl
@@ -10,3 +11,18 @@ Lib
 *.png
 *.json13:57
 data/raw/simulation.out.xml
+=======
+*.mp4
+*.zip
+*.pkl
+*.xml
+*.csv
+share
+Scripts
+Lib
+*.xlsx
+*.png
+*.json13:57
+data/raw/simulation.out.xml
+*.pyc
+>>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
