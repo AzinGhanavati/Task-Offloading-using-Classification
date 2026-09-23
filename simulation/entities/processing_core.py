@@ -48,6 +48,13 @@ class ProcessingCore:
         self.finishes_at = None
         return task
 
+    def reset(self) -> None:
+        """Clear the queue and any running task (used between DRL episodes)."""
+        self.queue.clear()
+        self.current = None
+        self.started_at = None
+        self.finishes_at = None
+
     def load_seconds(self, now: float) -> float:
         remaining = 0.0
         if self.current is not None and self.finishes_at is not None:

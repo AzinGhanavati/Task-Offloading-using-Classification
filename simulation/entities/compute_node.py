@@ -101,9 +101,35 @@ class ComputeNode:
         return min(1.0, self.total_load_seconds(now) / capacity)
 
     @property
+    def core_count(self) -> int:
+        return len(self.cores)
+
+    @property
     def queue_depth(self) -> int:
         return sum(core.queue_depth for core in self.cores)
 
     @property
     def frequency_hz(self) -> float:
         return self.hardware.core_frequency_hz
+
+    def average_load_seconds(self, now: float) -> float:
+        """Average remaining workload across all cores."""
+        if not self.cores:
+            return 0.0
+        return self.total_load_seconds(now) / len(self.cores)
+
+    def idle_core_ratio(self, now: float) -> float:
+        """Fraction of cores that are fully idle (no running, no queued task)."""
+        if not self.cores:
+            return 0.0
+        idle = sum(
+            1
+            for core in self.cores
+            if core.current is None and not core.queue
+        )
+        return idle / len(self.cores)
+
+    def reset(self) -> None:
+        """Clear all queues and running state (used between DRL episodes)."""
+        for core in self.cores:
+            core.reset()

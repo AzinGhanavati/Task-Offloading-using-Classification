@@ -1,50 +1,48 @@
+from __future__ import annotations
+
 import numpy as np
-from sb3_contrib import MaskablePPO
-from sb3_contrib.common.wrappers import ActionMasker
-from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
-from .vfc_env import VFCOffloadingEnv
+from config.hyperparameters import DRLTrainingConfig, default_hyperparameters
 
-def mask_fn(env: VFCOffloadingEnv) -> np.ndarray:
-    """Helper function to extract action masks for SB3."""
+
+def mask_fn(env) -> np.ndarray:
+    """Extract the boolean action mask for ``sb3_contrib.ActionMasker``."""
     return env.action_masks()
 
-def train_agent(simulation_env, state_dim: int, total_timesteps: int = 100_000):
-    # Initialize the custom Gymnasium environment
-    raw_env = VFCOffloadingEnv(
-        simulation_env=simulation_env,
-        state_dim=state_dim
-    )
-    
-    # Wrap environment to enable action masking capabilities
-    env = ActionMasker(raw_env, mask_fn)
 
-    # Define Neural Network architecture (equivalent to 256, 128 hidden layers)
+def train_agent(env, config: DRLTrainingConfig | None = None, total_timesteps: int | None = None):
+    """Train a MaskablePPO agent on a pre-built ``VFCOffloadingEnv``.
+
+    ``env`` must already have the trained regression predictor wired in, so the
+    observations are the augmented (prediction-aware) states.
+    """
+    from sb3_contrib import MaskablePPO
+    from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
+    from sb3_contrib.common.wrappers import ActionMasker
+
+    cfg = config or default_hyperparameters().drl
+    masked_env = ActionMasker(env, mask_fn)
+
     policy_kwargs = dict(
-        net_arch=dict(pi=[256, 128], vf=[256, 128])
+        net_arch=dict(pi=list(cfg.policy_net), vf=list(cfg.value_net))
     )
-
-    # Initialize Maskable PPO model
     model = MaskablePPO(
         MaskableActorCriticPolicy,
-        env,
-        learning_rate=3e-4,
-        n_steps=2048,
-        batch_size=64,
-        clip_range=0.2,
-        ent_coef=0.01,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
+        masked_env,
+        learning_rate=cfg.learning_rate,
+        n_steps=cfg.n_steps,
+        batch_size=cfg.batch_size,
+        clip_range=cfg.clip_range,
+        ent_coef=cfg.ent_coef,
+        vf_coef=cfg.vf_coef,
+        gamma=cfg.gamma,
+        gae_lambda=cfg.gae_lambda,
+        max_grad_norm=cfg.max_grad_norm,
         policy_kwargs=policy_kwargs,
         verbose=1,
-        device="auto"
+        device=cfg.device,
     )
 
-    print("Starting SB3 Training...")
-    model.learn(total_timesteps=total_timesteps)
-
-    # Save the trained model
-    model.save("vfc_ppo_model")
-    print("Model saved successfully.")
-    
+    print("Starting MaskablePPO training...")
+    model.learn(total_timesteps=total_timesteps or cfg.total_timesteps)
     return model

@@ -27,6 +27,10 @@ class OfflineDatasetRecorder:
             "creator_id": task.creator_id,
             "arrival_time": task.arrival_time,
             "absolute_deadline": task.absolute_deadline,
+            # 6-block normalized raw state (blocks 1-5) = the regression input.
+            "normalized_state": json.dumps(
+                list(context.raw_state.normalized_vector), separators=(",", ":")
+            ),
             **context.raw_state.global_features,
             "selected_action": int(action),
             "selected_target_id": context.catalog[int(action)].target_node_id,

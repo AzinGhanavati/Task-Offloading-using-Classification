@@ -22,15 +22,19 @@ def rato_path_loss_db(
     environment: str,
     noisy: bool,
     rain_attenuation_db: float = 0.0,
+    exponent_override: float | None = None,
 ) -> float:
     if carrier_frequency_hz <= 0:
         raise ValueError("carrier_frequency_hz must be positive")
-    try:
-        stable_n, noisy_n = PATH_LOSS_EXPONENTS[environment]
-    except KeyError as exc:
-        raise ValueError(f"unknown RATO environment: {environment}") from exc
-    
-    n = noisy_n if noisy else stable_n
+    if exponent_override is not None:
+        # Per-cell path-loss exponent sampled from the urban grid at runtime.
+        n = float(exponent_override)
+    else:
+        try:
+            stable_n, noisy_n = PATH_LOSS_EXPONENTS[environment]
+        except KeyError as exc:
+            raise ValueError(f"unknown RATO environment: {environment}") from exc
+        n = noisy_n if noisy else stable_n
     d = max(1.0, float(distance_m))
     c = 3.0e8
     
