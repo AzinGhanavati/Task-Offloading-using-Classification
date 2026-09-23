@@ -188,8 +188,16 @@ class SimulationEnvironment:
     # Event loop
     # ------------------------------------------------------------------
     def run(self, until: float | None = None) -> None:
+        last_log_time = 0.0
+        
         while self._events and not self._paused:
             timestamp = self._events[0].time
+            
+            # Log progress every 100 seconds
+            if timestamp - last_log_time >= 100.0:
+                print(f"[Simulation Progress] Current Time: {timestamp:.1f}s | Pending Events: {len(self._events)}")
+                last_log_time = timestamp
+                
             if until is not None and timestamp > until:
                 break
             self.now = timestamp
@@ -501,6 +509,16 @@ class SimulationEnvironment:
             task.infrastructure_compute_energy_j += compute_energy_j
         task.status = TaskStatus.COMPLETED
         task.completed_at = self.now
+
+        # Send reward (negative delay) to admission policy
+        if hasattr(self.admission_policy, "update"):
+            delay = task.completed_at - task.arrival_time
+            reward = -delay 
+            try:
+                self.admission_policy.update(task.task_id, reward)
+            except KeyError:
+                pass
+
         self.completed_tasks.append(task)
         for observer in self.observers:
             observer.on_final(task)
@@ -569,6 +587,15 @@ class SimulationEnvironment:
         task.status = TaskStatus.FAILED
         task.failure_reason = reason
         task.completed_at = self.now
+
+        # Send penalty to admission policy on failure
+        if hasattr(self.admission_policy, "update"):
+            penalty = -10.0
+            try:
+                self.admission_policy.update(task.task_id, penalty)
+            except KeyError:
+                pass
+
         self.failed_tasks.append(task)
         for observer in self.observers:
             observer.on_final(task)
