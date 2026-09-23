@@ -1,20 +1,38 @@
 from __future__ import annotations
+
 import csv
 import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+
 from simulation.entities.enums import OffloadAction
 from simulation.entities.sdn_controller import DecisionContext
 from simulation.entities.task import Task
 
 class OfflineDatasetRecorder:
-    """Joins decision time features with post simulation factual labels."""
-    def __init__(self, *, energy_label_scope: str = "vehicle") -> None:
+    """Joins decision time features with post simulation factual labels, using buffered I/O."""
+
+    def __init__(
+        self, 
+        *, 
+        energy_label_scope: str = "vehicle", 
+        batch_size: int = 50000,
+        output_path: str = "data/dataset/dataset.csv"
+    ) -> None:
         if energy_label_scope not in {"vehicle", "system"}:
             raise ValueError("energy_label_scope must be vehicle or system")
+        
         self.energy_label_scope = energy_label_scope
-        self._rows: dict[str, dict[str, Any]] = {}
+        self.batch_size = batch_size
+        self._output_path = Path(output_path)
+        
+        # دیکشنری برای تسک‌هایی که هنوز وضعیت نهایی آن‌ها مشخص نشده است
+        self._pending_rows: dict[str, dict[str, Any]] = {}
+        # لیستی برای نگهداری موقت تسک‌های کامل شده تا زمان نوشتن روی دیسک
+        self._completed_rows: list[dict[str, Any]] = []
+        
+        self._headers_written = False
 
     def on_decision(
         self,
@@ -27,7 +45,6 @@ class OfflineDatasetRecorder:
             "creator_id": task.creator_id,
             "arrival_time": task.arrival_time,
             "absolute_deadline": task.absolute_deadline,
-            # 6-block normalized raw state (blocks 1-5) = the regression input.
             "normalized_state": json.dumps(
                 list(context.raw_state.normalized_vector), separators=(",", ":")
             ),
@@ -43,12 +60,16 @@ class OfflineDatasetRecorder:
         for action_index, features in enumerate(context.raw_state.action_features):
             for name, value in asdict(features).items():
                 row[f"a{action_index}_{name}"] = value
-        self._rows[task.task_id] = row
+                
+        # ثبت در تسک‌های در حال اجرا
+        self._pending_rows[task.task_id] = row
 
     def on_final(self, task: Task) -> None:
-        row = self._rows.get(task.task_id)
+        # با استفاده از pop، رکورد را می‌گیریم و همزمان از RAM (بخش pending) پاک می‌کنیم
+        row = self._pending_rows.pop(task.task_id, None)
         if row is None:
             return
+
         selected_energy = (
             task.vehicle_energy_j
             if self.energy_label_scope == "vehicle"
@@ -75,25 +96,36 @@ class OfflineDatasetRecorder:
                 "achieved_wired_rate_bps": task.achieved_wired_rate_bps,
             }
         )
+        self._completed_rows.append(row)
+
+        # اگر بافر پر شد، آن را روی هارد می‌نویسیم و رم را خالی می‌کنیم
+        if len(self._completed_rows) >= self.batch_size:
+            self._flush()
+
+    def _flush(self) -> None:
+        if not self._completed_rows:
+            return
+
+        self._output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        mode = "a" if self._headers_written else "w"
+        fieldnames = list(self._completed_rows[0].keys())
+
+        with self._output_path.open(mode, newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            if not self._headers_written:
+                writer.writeheader()
+                self._headers_written = True
+            writer.writerows(self._completed_rows)
+
+        # تخلیه بافر پس از نوشتن در فایل
+        self._completed_rows.clear()
 
     @property
     def rows(self) -> list[dict[str, Any]]:
-        return [self._rows[key] for key in sorted(self._rows)]
+        return self._completed_rows
 
     def write_csv(self, path: str | Path) -> None:
-        rows = self.rows
-        if not rows:
-            raise RuntimeError("no finalized decision rows to write")
-        destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        fieldnames: list[str] = []
-        seen: set[str] = set()
-        for row in rows:
-            for key in row:
-                if key not in seen:
-                    seen.add(key)
-                    fieldnames.append(key)
-        with destination.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
+        """این متد در پایان شبیه‌سازی برای نوشتن تسک‌های باقی‌مانده در بافر فراخوانی می‌شود"""
+        self._output_path = Path(path)
+        self._flush()
