@@ -1,20 +1,14 @@
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
 import os
 import xml.etree.ElementTree as ET
 
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
 from config.hyperparameters import Hyperparameters, default_hyperparameters
 from config.simulation_config import default_simulation_config
 from simulation.entities import CloudNode, EdgeServer
 from simulation.network.urban_grid import UrbanGrid
 from simulation.placement import build_placement_strategy
-<<<<<<< HEAD
-=======
 from simulation.placement.base import PlacementPoint
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
 from simulation.scenario import Scenario
 
 
@@ -28,23 +22,6 @@ def vehicle_points(scenario: Scenario) -> list[tuple[float, float]]:
     return [(snap.x, snap.y) for _t, snaps in scenario.mobility for snap in snaps]
 
 
-<<<<<<< HEAD
-def build_infrastructure(
-    hyper: Hyperparameters, vehicle_pts: list[tuple[float, float]]
-):
-    """Instantiate the cloud and deploy edge servers via the placement strategy.
-
-    Returns ``(config, cloud, edge_servers)``.
-    """
-    config = default_simulation_config()
-    cloud = CloudNode(node_id="cloud-0", hardware=config.cloud)
-    strategy = build_placement_strategy(
-        hyper.placement,
-        area_x_max=hyper.urban_grid.area_x_max,
-        area_y_max=hyper.urban_grid.area_y_max,
-    )
-    locations = strategy.place(vehicle_pts)
-=======
 def save_placement_xml(locations: list[PlacementPoint], filepath: str) -> None:
     """Save the calculated edge server locations to an XML file."""
     os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
@@ -94,7 +71,6 @@ def build_infrastructure(
         locations = strategy.place(vehicle_pts)
         save_placement_xml(locations, xml_path)
 
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
     edge_servers = [
         EdgeServer(
             node_id=f"edge-{index}",
@@ -109,8 +85,4 @@ def build_infrastructure(
 
 
 def build_urban_grid(hyper: Hyperparameters) -> UrbanGrid:
-<<<<<<< HEAD
     return UrbanGrid(hyper.urban_grid)
-=======
-    return UrbanGrid(hyper.urban_grid)
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb

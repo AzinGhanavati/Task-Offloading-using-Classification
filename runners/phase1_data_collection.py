@@ -1,11 +1,7 @@
 """Phase 2 of the project: offline data collection with a random policy.
 
 Runs the full discrete-event simulator over the SUMO scenario, letting a
-<<<<<<< HEAD
-uniform-random offloading policy explore the state space.  A dataset recorder
-=======
 uniform-random offloading policy explore the state space. A dataset recorder
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
 captures decision-time features plus factual labels (TCT, energy, slack) for
 every task, which becomes the training set for the regression model.
 """
@@ -23,12 +19,7 @@ from runners.common import build_infrastructure, build_scenario, vehicle_points
 from simulation.environment import SimulationEnvironment
 from simulation.io.dataset_recorder import OfflineDatasetRecorder
 from simulation.network.urban_grid import UrbanGrid
-<<<<<<< HEAD
-from utils.metrics_logger import MetricsLogger
-
-=======
 from utils.metrics_logger import MetricsLogger, EvaluationMetricsLogger
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
 
 def run(
     vehicles_dir: str,
@@ -56,13 +47,6 @@ def run(
         offloading_policy=RandomOffloadingPolicy(seed),
     )
 
-<<<<<<< HEAD
-    recorder = OfflineDatasetRecorder(energy_label_scope=energy_label_scope)
-    metrics = MetricsLogger()
-    env.add_observer(recorder)
-    env.add_observer(metrics)
-
-=======
     # Initialize all observers once
     recorder = OfflineDatasetRecorder(energy_label_scope=energy_label_scope)
     metrics = MetricsLogger()
@@ -75,19 +59,10 @@ def run(
     env.add_observer(eval_metrics)
 
     # Schedule and run ONLY ONCE
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
     for time, snapshots in scenario.vehicle_snapshots():
         env.schedule_vehicle_snapshot(time, snapshots)
     for task in scenario.make_tasks():
         env.schedule_task(task, bypass_admission=True)
-<<<<<<< HEAD
-    env.run()
-
-    recorder.write_csv(out_csv)
-    metrics_path = out_csv.rsplit(".", 1)[0] + ".metrics.csv"
-    metrics.write_csv(metrics_path)
-
-=======
         
     print(f"[phase1] Total events scheduled: {len(env._events)}")
     print("[phase1] Starting simulation event loop...")
@@ -108,7 +83,6 @@ def run(
     eval_metrics.write_csvs(task_csv_path=task_log_path, step_csv_path=step_log_path)
 
     # Print terminal summary
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
     summary = metrics.summary()
     print(
         "[phase1] tasks=%(total)d completed=%(completed)d "
@@ -121,13 +95,6 @@ def run(
             out_csv,
         )
     )
-<<<<<<< HEAD
-    return out_csv
-
-
-if __name__ == "__main__":
-    run("data/chunks/vehicles", "data/chunks/tasks", "data/dataset/dataset.csv")
-=======
     print(f"[phase1] Data collection finished.")
     print(f"[phase1] Task Log: {task_log_path}")
     print(f"[phase1] Step Log: {step_log_path}")
@@ -136,4 +103,3 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     run("data/chunks/vehicles", "data/chunks/tasks", "data/dataset/dataset.csv")
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb

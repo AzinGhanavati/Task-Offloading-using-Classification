@@ -128,8 +128,6 @@ class MetricsLogger:
 
     def clear(self) -> None:
         self._records.clear()
-<<<<<<< HEAD
-=======
 
 
 import csv
@@ -250,4 +248,3 @@ class EvaluationMetricsLogger:
                 writer.writerows(self.step_logs)
 
     
->>>>>>> 877352841b18743b81cd2deb8d01201566cbf6bb
